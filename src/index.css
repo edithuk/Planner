@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+:root {
+  --color-accent: 59 130 246;
+  --color-surface: 24 24 27;
+  --color-surface-elevated: 39 39 42;
+}
+
+html, body {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #09090b;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
+}
