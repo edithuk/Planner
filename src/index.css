@@ -9,6 +9,8 @@
 html, body {
   margin: 0;
   height: 100vh;
+  height: 100dvh; /* Dynamic viewport - accounts for mobile browser UI */
+  min-height: -webkit-fill-available;
   overflow: hidden;
   background-color: #09090b;
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
