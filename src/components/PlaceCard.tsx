@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useDraggable } from '@dnd-kit/core';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { PlaceItem } from '../types';
 import { useTripStore } from '../store/tripStore';
 
@@ -29,10 +30,21 @@ export function PlaceCard({
   const { updateItem, removeItem } = useTripStore();
 
   const dragId = `item-${tripId}-${item.id}`;
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: dragId,
     data: { tripId, section, dayId, itemId: item.id },
   });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   const showInstructions = section === 'days' || section === 'wishlist' || section === 'todo';
 
@@ -50,10 +62,11 @@ export function PlaceCard({
   return (
     <div
       ref={setNodeRef}
+      style={style}
       {...listeners}
       {...attributes}
       className={`group rounded-lg bg-zinc-800 border-2 p-3 transition cursor-grab active:cursor-grabbing shadow-md ${
-        isDragging ? 'opacity-50 border-blue-400' : 'border-zinc-600 hover:border-zinc-500 hover:shadow-lg'
+        isDragging ? 'opacity-0' : 'border-zinc-600 hover:border-zinc-500 hover:shadow-lg'
       }`}
     >
       <div className="flex items-start justify-between gap-2">
