@@ -26,6 +26,13 @@ interface TripStore {
     toDayId?: string,
     toIndex?: number
   ) => void;
+  reorderItem: (
+    tripId: string,
+    itemId: string,
+    section: 'wishlist' | 'todo' | 'recommendedPlaces' | 'days',
+    dayId: string | undefined,
+    toIndex: number
+  ) => void;
   removeItem: (
     tripId: string,
     itemId: string,
@@ -217,6 +224,52 @@ export const useTripStore = create<TripStore>((set) => ({
 
       return {
         trips: state.trips.map((t) => (t.id === tripId ? updatedTrip : t)),
+      };
+    }),
+
+  reorderItem: (tripId, itemId, section, dayId, toIndex) =>
+    set((state) => {
+      const trip = state.trips.find((t) => t.id === tripId);
+      if (!trip) return state;
+
+      const getItems = (): PlaceItem[] => {
+        if (section === 'days' && dayId) {
+          const day = trip.days.find((d) => d.id === dayId);
+          return day ? [...day.items] : [];
+        }
+        if (section === 'wishlist') return [...trip.wishlist];
+        if (section === 'todo') return [...trip.todo];
+        if (section === 'recommendedPlaces') return [...trip.recommendedPlaces];
+        return [];
+      };
+
+      const setItems = (t: Trip, items: PlaceItem[]): Trip => {
+        if (section === 'days' && dayId) {
+          return {
+            ...t,
+            days: t.days.map((d) =>
+              d.id === dayId ? { ...d, items } : d
+            ),
+          };
+        }
+        if (section === 'wishlist') return { ...t, wishlist: items };
+        if (section === 'todo') return { ...t, todo: items };
+        if (section === 'recommendedPlaces') return { ...t, recommendedPlaces: items };
+        return t;
+      };
+
+      const items = getItems();
+      const fromIndex = items.findIndex((i) => i.id === itemId);
+      if (fromIndex < 0) return state;
+
+      const [item] = items.splice(fromIndex, 1);
+      const newIndex = Math.max(0, Math.min(toIndex, items.length));
+      items.splice(newIndex, 0, item);
+
+      return {
+        trips: state.trips.map((t) =>
+          t.id === tripId ? setItems(t, items) : t
+        ),
       };
     }),
 
