@@ -1,4 +1,5 @@
 import { useDroppable } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { PlaceItem } from '../types';
 import { useTripStore } from '../store/tripStore';
 import { PlaceCard } from './PlaceCard';
@@ -95,19 +96,24 @@ export function SectionColumn({
       ) : (
         <h3 className={`font-semibold mb-3 ${SECTION_TITLE_COLORS[section] ?? 'text-zinc-200'}`}>{title}</h3>
       )}
-      <div className="space-y-2">
-        {items.map((item, index) => (
-          <PlaceCard
-            key={item.id}
-            item={item}
-            index={index + 1}
-            tripId={tripId}
-            section={section}
-            dayId={dayId}
-            showRecommendedFor={showRecommendedFor}
-          />
-        ))}
-      </div>
+      <SortableContext
+        items={items.map((i) => `item-${tripId}-${i.id}`)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="space-y-2">
+          {items.map((item, index) => (
+            <PlaceCard
+              key={item.id}
+              item={item}
+              index={index + 1}
+              tripId={tripId}
+              section={section}
+              dayId={dayId}
+              showRecommendedFor={showRecommendedFor}
+            />
+          ))}
+        </div>
+      </SortableContext>
       <div className="mt-3">
         <PlaceAutocompleteInput
           onSelect={handleAddPlace}
