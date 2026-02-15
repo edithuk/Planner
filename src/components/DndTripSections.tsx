@@ -12,7 +12,7 @@ import {
 import type { PlaceItem, Trip } from '../types';
 import { useTripStore } from '../store/tripStore';
 import { TripSections } from './TripSections';
-import { PlaceCardOverlay } from './PlaceCardOverlay';
+import PlaceCardOverlay from './PlaceCardOverlay';
 
 interface DndTripSectionsProps {
   trip: Trip;
