@@ -26,7 +26,7 @@ export function AddDaySection({ tripId }: AddDaySectionProps) {
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       {isAdding ? (
         <>
           <input
@@ -34,7 +34,7 @@ export function AddDaySection({ tripId }: AddDaySectionProps) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Day name (e.g. Day 1, Beach Day)"
-            className="px-3 py-2 rounded-lg bg-zinc-700 border border-zinc-600 text-zinc-200 placeholder-zinc-500 w-48"
+            className="px-3 py-2 rounded-lg bg-zinc-700 border border-zinc-600 text-zinc-200 placeholder-zinc-500 w-full min-w-0 sm:w-48 flex-1"
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleAdd();
               if (e.key === 'Escape') handleCancel();
@@ -57,7 +57,7 @@ export function AddDaySection({ tripId }: AddDaySectionProps) {
       ) : (
         <button
           onClick={() => setIsAdding(true)}
-          className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-emerald-400 hover:text-emerald-300 text-sm font-medium border-2 border-dashed border-emerald-500/50 hover:border-emerald-500 transition-all"
+          className="px-4 py-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-emerald-400 hover:text-emerald-300 text-sm font-medium border-2 border-dashed border-emerald-500/50 hover:border-emerald-500 transition-all min-h-[44px] touch-manipulation"
         >
           + Add Day Section
         </button>
