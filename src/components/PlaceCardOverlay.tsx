@@ -1,125 +1,32 @@
-import { useDroppable } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { PlaceItem } from '../types';
-import { useTripStore } from '../store/tripStore';
-import { PlaceCard } from './PlaceCard';
-import { PlaceAutocompleteInput } from './PlaceAutocompleteInput';
-import { DaySectionHeader } from './DaySectionHeader';
 
-type SectionKey = 'wishlist' | 'todo' | 'recommendedPlaces' | 'days';
-
-// Day sections use distinct colors (no rose, amber, emerald - reserved for Recommended, Wishlist, To Do)
-const DAY_COLORS = [
-  'bg-zinc-800 border-l-4 border-l-violet-500 border border-zinc-600',     // Day 1
-  'bg-zinc-800 border-l-4 border-l-sky-500 border border-zinc-600',       // Day 2
-  'bg-zinc-800 border-l-4 border-l-cyan-500 border border-zinc-600',       // Day 3
-  'bg-zinc-800 border-l-4 border-l-orange-500 border border-zinc-600',    // Day 4
-  'bg-zinc-800 border-l-4 border-l-fuchsia-500 border border-zinc-600',    // Day 5
-  'bg-zinc-800 border-l-4 border-l-indigo-500 border border-zinc-600',    // Day 6
-  'bg-zinc-800 border-l-4 border-l-teal-500 border border-zinc-600',       // Day 7
-  'bg-zinc-800 border-l-4 border-l-pink-500 border border-zinc-600',      // Day 8
-  'bg-zinc-800 border-l-4 border-l-lime-500 border border-zinc-600',      // Day 9
-  'bg-zinc-800 border-l-4 border-l-blue-500 border border-zinc-600',      // Day 10
-];
-
-const SECTION_TITLE_COLORS: Record<string, string> = {
-  recommendedPlaces: 'text-rose-400',
-  wishlist: 'text-amber-400',
-  todo: 'text-emerald-400',
-};
-
-const DAY_TITLE_COLORS = [
-  'text-violet-400', 'text-sky-400', 'text-cyan-400', 'text-orange-400',
-  'text-fuchsia-400', 'text-indigo-400', 'text-teal-400', 'text-pink-400',
-  'text-lime-400', 'text-blue-400',
-];
-
-interface SectionColumnProps {
-  tripId: string;
-  title: string;
-  items: PlaceItem[];
-  section: SectionKey;
-  dayId?: string;
-  dayIndex?: number;
+interface PlaceCardOverlayProps {
+  item: PlaceItem;
+  index: number;
   showRecommendedFor?: boolean;
-  fixedSectionStyle?: string;
-  onRenameDay?: (name: string) => void;
-  onRemoveDay?: () => void;
 }
 
-export function SectionColumn({
-  tripId,
-  title,
-  items,
-  section,
-  dayId,
-  dayIndex,
+export default function PlaceCardOverlay({
+  item,
+  index,
   showRecommendedFor,
-  fixedSectionStyle,
-  onRenameDay,
-  onRemoveDay,
-}: SectionColumnProps) {
-  const { addItemToSection, addItemToDay } = useTripStore();
-
-  const dropId = `drop-${tripId}-${section}-${dayId ?? 'x'}`;
-  const { setNodeRef, isOver } = useDroppable({
-    id: dropId,
-    data: { tripId, section, dayId },
-  });
-
-  const handleAddPlace = (item: Omit<PlaceItem, 'id'>) => {
-    if (section === 'days' && dayId) {
-      addItemToDay(tripId, dayId, item);
-    } else if (section !== 'days') {
-      addItemToSection(tripId, section, item);
-    }
-  };
-
-  const baseStyles = section === 'days' && dayIndex !== undefined
-    ? DAY_COLORS[dayIndex % DAY_COLORS.length]
-    : fixedSectionStyle ?? 'bg-zinc-800 border-l-4 border-l-zinc-500 border border-zinc-600';
-
+}: PlaceCardOverlayProps) {
   return (
-    <div
-      ref={setNodeRef}
-      className={`rounded-xl border p-3 md:p-4 min-h-[160px] md:min-h-[200px] transition-all shadow-lg ${baseStyles} ${
-        isOver ? '!border-blue-500 ring-2 ring-blue-400/50' : ''
-      }`}
-    >
-      {onRenameDay && onRemoveDay ? (
-        <DaySectionHeader
-          title={title}
-          onRename={onRenameDay}
-          onRemove={onRemoveDay}
-          titleColor={dayIndex !== undefined ? DAY_TITLE_COLORS[dayIndex % DAY_TITLE_COLORS.length] : undefined}
-        />
-      ) : (
-        <h3 className={`font-semibold mb-3 ${SECTION_TITLE_COLORS[section] ?? 'text-zinc-200'}`}>{title}</h3>
-      )}
-      <SortableContext
-        items={items.map((i) => `item-${tripId}-${i.id}`)}
-        strategy={verticalListSortingStrategy}
-      >
-        <div className="space-y-2">
-          {items.map((item, index) => (
-            <PlaceCard
-              key={item.id}
-              item={item}
-              index={index + 1}
-              tripId={tripId}
-              section={section}
-              dayId={dayId}
-              showRecommendedFor={showRecommendedFor}
-            />
-          ))}
+    <div className="rounded-lg bg-zinc-800 border-2 border-blue-400 p-3 shadow-xl cursor-grabbing rotate-2 opacity-95 w-[min(280px,85vw)]">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0 flex items-start gap-2">
+          <span className="shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-zinc-600 text-zinc-300 text-xs font-semibold">
+            {index}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-zinc-200 truncate">{item.name}</p>
+            {showRecommendedFor && item.recommendedFor && (
+              <p className="text-xs text-zinc-500 mt-0.5 truncate">
+                For: {item.recommendedFor}
+              </p>
+            )}
+          </div>
         </div>
-      </SortableContext>
-      <div className="mt-3">
-        <PlaceAutocompleteInput
-          onSelect={handleAddPlace}
-          placeholder={`Add to ${title}...`}
-          section={section}
-        />
       </div>
     </div>
   );
