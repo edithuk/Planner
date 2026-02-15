@@ -13,8 +13,8 @@ export function TripSections({ trip }: TripSectionsProps) {
   return (
     <div className="flex flex-col flex-1 min-h-0 mt-5">
       {/* Single scroll container: Recommended, Wishlist, To Do + Day Plan */}
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-6 pb-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-4 md:space-y-6 pb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
           <SectionColumn
             tripId={trip.id}
             title="Recommended Places"

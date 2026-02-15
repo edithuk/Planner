@@ -105,7 +105,7 @@ export function PlaceCard({
         </div>
         <button
           onClick={() => removeItem(tripId, item.id, section, dayId)}
-          className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 text-sm transition"
+          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 text-zinc-500 hover:text-red-400 text-sm p-1 min-w-[32px] min-h-[32px] flex items-center justify-center touch-manipulation transition"
           aria-label="Remove"
         >
           ×

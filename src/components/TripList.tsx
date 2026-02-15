@@ -8,6 +8,7 @@ import { TripCard } from './TripCard.tsx';
 import { TripMap, type MapItemWithSection } from './TripMap.tsx';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+type MobileView = 'planner' | 'map';
 
 function getAllMapItems(trip: Trip | undefined): MapItemWithSection[] {
   if (!trip) return [];
@@ -36,6 +37,8 @@ export function TripList() {
   );
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [mobileView, setMobileView] = useState<MobileView>('planner');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) ?? trips[0];
 
@@ -77,20 +80,31 @@ export function TripList() {
   };
 
   return (
-    <div className="h-screen bg-zinc-950 text-zinc-100 flex flex-col overflow-hidden">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/95 backdrop-blur-sm shadow-sm">
-        <h1 className="text-xl font-bold tracking-tight text-zinc-100">Planner</h1>
-        <div className="flex items-center gap-3">
+    <div className="h-screen bg-zinc-950 text-zinc-100 flex flex-col overflow-hidden pt-[env(safe-area-inset-top)]">
+      <header className="flex items-center justify-between gap-2 px-4 py-3 md:px-6 md:py-4 border-b border-zinc-800 bg-zinc-900/95 backdrop-blur-sm shadow-sm flex-wrap sm:flex-nowrap">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            onClick={() => setSidebarOpen((o) => !o)}
+            className="lg:hidden p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
+            aria-label="Toggle trips"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <h1 className="text-lg md:text-xl font-bold tracking-tight text-zinc-100 truncate">Planner</h1>
+        </div>
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           <button
             onClick={handleAddTrip}
-            className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 font-medium text-sm text-white transition-all shadow-md hover:shadow-lg"
+            className="px-3 py-2 md:px-4 md:py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 font-medium text-xs md:text-sm text-white transition-all shadow-md"
           >
             + Add Trip
           </button>
           <button
             onClick={handleSave}
             disabled={saveStatus === 'saving'}
-            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-700 disabled:cursor-not-allowed font-medium text-sm text-white transition-all shadow-md"
+            className="px-3 py-2 md:px-4 md:py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-700 disabled:cursor-not-allowed font-medium text-xs md:text-sm text-white transition-all shadow-md"
           >
             {saveStatus === 'saving' && 'Saving...'}
             {saveStatus === 'saved' && 'Saved!'}
@@ -98,21 +112,33 @@ export function TripList() {
             {saveStatus === 'idle' && 'Save'}
           </button>
           {saveError && (
-            <span className="text-red-400 text-xs max-w-[200px] truncate" title={saveError}>
+            <span className="hidden sm:inline text-red-400 text-xs max-w-[120px] md:max-w-[200px] truncate" title={saveError}>
               {saveError}
             </span>
           )}
           <button
             onClick={() => signOut(auth)}
-            className="px-4 py-2.5 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-sm transition-all"
+            className="px-3 py-2 md:px-4 md:py-2.5 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs md:text-sm transition-all"
           >
             Sign out
           </button>
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-hidden">
-        <aside className="w-56 shrink-0 border-r border-zinc-800 bg-zinc-900 overflow-y-auto">
+      {sidebarOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/60 z-40"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden
+        />
+      )}
+      <div className="flex-1 flex overflow-hidden relative">
+        <aside
+          className={`flex flex-col w-56 shrink-0 border-r border-zinc-800 bg-zinc-900 overflow-y-auto transition-transform duration-200 ease-out
+            fixed left-0 top-0 bottom-0 z-50 pt-14 lg:pt-0
+            lg:relative lg:left-auto lg:top-auto lg:bottom-auto lg:z-auto
+            ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+        >
           <div className="p-3 space-y-1">
             {trips.length === 0 ? (
               <p className="p-3 text-zinc-500 text-sm">No trips yet</p>
@@ -120,7 +146,10 @@ export function TripList() {
               trips.map((trip) => (
                 <button
                   key={trip.id}
-                  onClick={() => setSelectedTripId(trip.id)}
+                  onClick={() => {
+                    setSelectedTripId(trip.id);
+                    setSidebarOpen(false);
+                  }}
                   className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all ${
                     selectedTripId === trip.id
                       ? 'bg-blue-600/30 text-blue-300 font-medium shadow-sm border border-blue-500/50'
@@ -134,25 +163,50 @@ export function TripList() {
           </div>
         </aside>
 
-        <main className="flex-1 flex flex-col overflow-hidden min-w-0 bg-zinc-900">
+        <main
+          className={`flex-1 flex flex-col overflow-hidden min-w-0 bg-zinc-900 ${mobileView === 'planner' ? 'flex' : 'hidden'} lg:flex`}
+        >
           {selectedTrip ? (
             <TripCard trip={selectedTrip} />
           ) : (
-            <div className="flex items-center justify-center flex-1 text-zinc-500">
+            <div className="flex items-center justify-center flex-1 text-zinc-500 p-4">
               Add a trip to get started
             </div>
           )}
         </main>
 
-        <aside className="w-[400px] shrink-0 border-l border-zinc-800 bg-zinc-900 flex flex-col overflow-hidden">
+        <aside
+          className={`shrink-0 border-l border-zinc-800 bg-zinc-900 flex-col overflow-hidden flex
+            w-full lg:w-[400px]
+            ${mobileView === 'map' ? 'flex' : 'hidden'} lg:flex`}
+        >
           <div className="px-4 py-3 border-b border-zinc-800">
             <h3 className="text-sm font-semibold text-zinc-100">Map</h3>
             <p className="text-xs text-zinc-500 mt-0.5">All locations by section</p>
           </div>
-          <div className="flex-1 min-h-0">
-            <TripMap items={getAllMapItems(selectedTrip)} className="h-full" />
+          <div className="flex-1 min-h-[300px] lg:min-h-0">
+            <TripMap items={getAllMapItems(selectedTrip)} className="h-full min-h-[280px]" />
           </div>
         </aside>
+      </div>
+
+      <div className="lg:hidden flex border-t border-zinc-800 bg-zinc-900 pb-[env(safe-area-inset-bottom)]">
+        <button
+          onClick={() => setMobileView('planner')}
+          className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
+            mobileView === 'planner' ? 'text-blue-400 border-b-2 border-blue-500 bg-zinc-800/50' : 'text-zinc-400'
+          }`}
+        >
+          Planner
+        </button>
+        <button
+          onClick={() => setMobileView('map')}
+          className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
+            mobileView === 'map' ? 'text-blue-400 border-b-2 border-blue-500 bg-zinc-800/50' : 'text-zinc-400'
+          }`}
+        >
+          Map
+        </button>
       </div>
     </div>
   );
