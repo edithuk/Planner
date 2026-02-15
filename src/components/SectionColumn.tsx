@@ -81,7 +81,7 @@ export function SectionColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-xl border p-4 min-h-[200px] transition-all shadow-lg ${baseStyles} ${
+      className={`rounded-xl border p-3 md:p-4 min-h-[160px] md:min-h-[200px] transition-all shadow-lg ${baseStyles} ${
         isOver ? '!border-blue-500 ring-2 ring-blue-400/50' : ''
       }`}
     >
