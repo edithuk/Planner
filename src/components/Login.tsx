@@ -43,8 +43,8 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-950 p-4">
-      <div className="w-full max-w-sm rounded-xl bg-zinc-900 p-8 shadow-xl border border-zinc-700">
+    <div className="min-h-screen flex items-center justify-center bg-zinc-950 p-4 safe-area-padding">
+      <div className="w-full max-w-sm rounded-xl bg-zinc-900 p-6 md:p-8 shadow-xl border border-zinc-700">
         <h1 className="text-2xl font-bold text-zinc-100 text-center mb-6">
           Planner
         </h1>
