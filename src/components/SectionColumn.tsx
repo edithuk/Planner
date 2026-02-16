@@ -37,10 +37,13 @@ const DAY_TITLE_COLORS = [
 interface SectionColumnProps {
   tripId: string;
   title: string;
+  subtitle?: string;
+  addPlaceholder?: string;
   items: PlaceItem[];
   section: SectionKey;
   dayId?: string;
   dayIndex?: number;
+  stepLabel?: string;
   showRecommendedFor?: boolean;
   fixedSectionStyle?: string;
   onRenameDay?: (name: string) => void;
@@ -50,10 +53,13 @@ interface SectionColumnProps {
 export function SectionColumn({
   tripId,
   title,
+  subtitle,
+  addPlaceholder,
   items,
   section,
   dayId,
   dayIndex,
+  stepLabel,
   showRecommendedFor,
   fixedSectionStyle,
   onRenameDay,
@@ -94,7 +100,19 @@ export function SectionColumn({
           titleColor={dayIndex !== undefined ? DAY_TITLE_COLORS[dayIndex % DAY_TITLE_COLORS.length] : undefined}
         />
       ) : (
-        <h3 className={`font-semibold mb-3 ${SECTION_TITLE_COLORS[section] ?? 'text-zinc-200'}`}>{title}</h3>
+        <div className="mb-3">
+          {stepLabel && (
+            <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-medium">
+              {stepLabel}
+            </span>
+          )}
+          <h3 className={`font-semibold ${SECTION_TITLE_COLORS[section] ?? 'text-zinc-200'}`}>
+            {title}
+          </h3>
+          {subtitle && (
+            <p className="text-xs text-zinc-500 mt-0.5">{subtitle}</p>
+          )}
+        </div>
       )}
       <SortableContext
         items={items.map((i) => `item-${tripId}-${i.id}`)}
@@ -117,7 +135,7 @@ export function SectionColumn({
       <div className="mt-3">
         <PlaceAutocompleteInput
           onSelect={handleAddPlace}
-          placeholder={`Add to ${title}...`}
+          placeholder={addPlaceholder ?? `Add to ${title}...`}
           section={section}
         />
       </div>
