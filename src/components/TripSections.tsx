@@ -14,31 +14,47 @@ export function TripSections({ trip }: TripSectionsProps) {
     <div className="flex flex-col flex-1 min-h-0 mt-5">
       {/* Single scroll container: Recommended, Wishlist, To Do + Day Plan */}
       <div className="flex-1 min-h-0 overflow-y-auto space-y-4 md:space-y-6 pb-24 md:pb-4">
+        <div className="hidden md:flex items-center justify-center gap-2 py-1 text-xs text-zinc-500">
+          <span className="text-rose-400 font-medium">Suggested</span>
+          <span aria-hidden>→</span>
+          <span className="text-amber-400 font-medium">Want to Visit</span>
+          <span aria-hidden>→</span>
+          <span className="text-emerald-400 font-medium">Confirmed</span>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
           <SectionColumn
             tripId={trip.id}
-            title="Recommended Places"
+            title="Suggested for Me"
+            subtitle="Places others recommended"
+            addPlaceholder="Add a place someone recommended…"
+            stepLabel="Step 1"
             items={trip.recommendedPlaces}
             section="recommendedPlaces"
             showRecommendedFor
             fixedSectionStyle="bg-zinc-800 border-l-4 border-l-rose-500 border border-zinc-600"
           />
-        <SectionColumn
-          tripId={trip.id}
-          title="Wishlist"
-          items={trip.wishlist}
-          section="wishlist"
-          showRecommendedFor
-          fixedSectionStyle="bg-zinc-800 border-l-4 border-l-amber-500 border border-zinc-600"
-        />
-        <SectionColumn
-          tripId={trip.id}
-          title="To Do"
-          items={trip.todo}
-          section="todo"
-          showRecommendedFor
-          fixedSectionStyle="bg-zinc-800 border-l-4 border-l-emerald-500 border border-zinc-600"
-        />
+          <SectionColumn
+            tripId={trip.id}
+            title="Want to Visit"
+            subtitle="Places I'd like to go"
+            addPlaceholder="Add a place you want to visit…"
+            stepLabel="Step 2"
+            items={trip.wishlist}
+            section="wishlist"
+            showRecommendedFor
+            fixedSectionStyle="bg-zinc-800 border-l-4 border-l-amber-500 border border-zinc-600"
+          />
+          <SectionColumn
+            tripId={trip.id}
+            title="Confirmed"
+            subtitle="Places I'm planning to visit"
+            addPlaceholder="Add a place you've decided to go to…"
+            stepLabel="Step 3"
+            items={trip.todo}
+            section="todo"
+            showRecommendedFor
+            fixedSectionStyle="bg-zinc-800 border-l-4 border-l-emerald-500 border border-zinc-600"
+          />
         </div>
 
         {trip.days.length > 0 && (
