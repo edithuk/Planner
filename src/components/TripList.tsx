@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { saveTripsToFirestore } from '../lib/firestore';
+import { exportTripToPdf } from '../lib/exportTripToPdf';
 import { useTripStore } from '../store/tripStore';
 import type { Trip } from '../types';
 import { TripCard } from './TripCard.tsx';
@@ -31,7 +32,7 @@ function getAllMapItems(trip: Trip | undefined): MapItemWithSection[] {
 }
 
 export function TripList() {
-  const { trips, addTrip } = useTripStore();
+  const { trips, addTrip, deleteTrip } = useTripStore();
   const [selectedTripId, setSelectedTripId] = useState<string | null>(
     trips[0]?.id ?? null
   );
@@ -47,6 +48,19 @@ export function TripList() {
     const newTrips = useTripStore.getState().trips;
     const lastTrip = newTrips[newTrips.length - 1];
     if (lastTrip) setSelectedTripId(lastTrip.id);
+  };
+
+  const handleDeleteTrip = (e: React.MouseEvent, tripId: string) => {
+    e.stopPropagation();
+    deleteTrip(tripId);
+    if (selectedTripId === tripId) {
+      const remaining = trips.filter((t) => t.id !== tripId);
+      setSelectedTripId(remaining[0]?.id ?? null);
+    }
+  };
+
+  const handleExportPdf = () => {
+    if (selectedTrip) exportTripToPdf(selectedTrip);
   };
 
   const handleSave = async () => {
@@ -111,6 +125,16 @@ export function TripList() {
             {saveStatus === 'error' && 'Error'}
             {saveStatus === 'idle' && 'Save'}
           </button>
+          <button
+            onClick={handleExportPdf}
+            disabled={!selectedTrip}
+            className="p-1.5 sm:p-2.5 rounded-lg md:rounded-xl bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-200 transition-all"
+            aria-label="Download trip as PDF"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </button>
           {saveError && (
             <span className="hidden sm:inline text-red-400 text-xs max-w-[120px] md:max-w-[200px] truncate" title={saveError}>
               {saveError}
@@ -144,20 +168,37 @@ export function TripList() {
               <p className="p-3 text-zinc-500 text-sm">No trips yet</p>
             ) : (
               trips.map((trip) => (
-                <button
+                <div
                   key={trip.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => {
                     setSelectedTripId(trip.id);
                     setSidebarOpen(false);
                   }}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all ${
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedTripId(trip.id);
+                      setSidebarOpen(false);
+                    }
+                  }}
+                  className={`group flex items-center gap-2 w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all ${
                     selectedTripId === trip.id
                       ? 'bg-blue-600/30 text-blue-300 font-medium shadow-sm border border-blue-500/50'
                       : 'hover:bg-zinc-800 text-zinc-300'
                   }`}
                 >
-                  {trip.name}
-                </button>
+                  <span className="flex-1 min-w-0 truncate">{trip.name}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => handleDeleteTrip(e, trip.id)}
+                    className="shrink-0 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center rounded text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition touch-manipulation"
+                    aria-label={`Delete ${trip.name}`}
+                  >
+                    ×
+                  </button>
+                </div>
               ))
             )}
           </div>
