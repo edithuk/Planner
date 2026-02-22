@@ -10,6 +10,18 @@ interface VercelResponse {
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.VITE_GOOGLE_MAPS_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+type AIProvider = 'groq' | 'gemini';
+
+function getAIProvider(): AIProvider | null {
+  const configured = process.env.AI_PROVIDER?.toLowerCase();
+  if (configured === 'groq' && GROQ_API_KEY) return 'groq';
+  if (configured === 'gemini' && GEMINI_API_KEY) return 'gemini';
+  if (GROQ_API_KEY) return 'groq';
+  if (GEMINI_API_KEY) return 'gemini';
+  return null;
+}
 
 async function generateWithGroq(
   message: string,
@@ -51,6 +63,27 @@ If you don't have data, you can use general knowledge but say so. Keep responses
   return text;
 }
 
+async function generateWithGemini(
+  message: string,
+  placeContext: string,
+  history: Array<{ role: string; content: string }>
+): Promise<string> {
+  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  const genAI = new GoogleGenerativeAI(GEMINI_API_KEY!);
+  const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const model = genAI.getGenerativeModel({ model: modelName });
+
+  const chat = model.startChat({
+    history: history.slice(-10).map((h) => ({
+      role: h.role === 'user' ? 'user' : 'model',
+      parts: [{ text: h.content }],
+    })),
+  });
+
+  const result = await chat.sendMessage(`${message}${placeContext}`);
+  return result.response.text();
+}
+
 async function findPlaceId(query: string): Promise<string | null> {
   if (!GOOGLE_PLACES_API_KEY) return null;
   const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id&key=${GOOGLE_PLACES_API_KEY}`;
@@ -84,12 +117,14 @@ async function textSearchPlaces(query: string): Promise<unknown[] | null> {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') {
+    const provider = getAIProvider();
     return res.status(200).json({
       status: 'ok',
-      provider: 'groq',
+      provider: provider || 'none',
       message: 'Chat API is running. Use POST to send messages.',
-      configured: !!GROQ_API_KEY,
-      hint: !GROQ_API_KEY ? 'Add GROQ_API_KEY to .env (get free key at console.groq.com)' : undefined,
+      configured: !!provider,
+      providers: { groq: !!GROQ_API_KEY, gemini: !!GEMINI_API_KEY },
+      hint: !provider ? 'Add GROQ_API_KEY or GEMINI_API_KEY to .env' : undefined,
     });
   }
   if (req.method !== 'POST') {
@@ -97,10 +132,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  if (!GROQ_API_KEY) {
+  const provider = getAIProvider();
+  if (!provider) {
     return res.status(503).json({
-      error: 'Chat is not configured. Please set GROQ_API_KEY in .env',
-      text: 'Add GROQ_API_KEY to .env (get free key at console.groq.com)',
+      error: 'No AI provider configured. Set GROQ_API_KEY or GEMINI_API_KEY in .env',
+      text: 'Add GROQ_API_KEY (free at console.groq.com) or GEMINI_API_KEY to .env',
     });
   }
 
@@ -153,7 +189,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const history = Array.isArray(body?.conversationHistory) ? body.conversationHistory : [];
-    const text = await generateWithGroq(message, placeContext, history);
+    const text =
+      provider === 'groq'
+        ? await generateWithGroq(message, placeContext, history)
+        : await generateWithGemini(message, placeContext, history);
 
     return res.status(200).json({ text });
   } catch (err) {
