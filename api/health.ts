@@ -3,10 +3,13 @@ export default function handler(_req: { method?: string }, res: { status: (n: nu
   if (_req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
-  const configured = !!process.env.GROQ_API_KEY;
+  const groq = !!process.env.GROQ_API_KEY;
+  const gemini = !!process.env.GEMINI_API_KEY;
+  const configured = groq || gemini;
   return res.status(200).json({
     status: 'ok',
     message: 'API is running',
     configured,
+    providers: { groq, gemini },
   });
 }
