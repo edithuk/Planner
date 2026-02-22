@@ -7,7 +7,9 @@ function generateId() {
 
 interface TripStore {
   trips: Trip[];
+  selectedTripId: string | null;
   setTrips: (trips: Trip[]) => void;
+  setSelectedTripId: (id: string | null) => void;
   addTrip: () => void;
   updateTrip: (id: string, updates: Partial<Omit<Trip, 'id'>>) => void;
   deleteTrip: (id: string) => void;
@@ -49,6 +51,11 @@ interface TripStore {
   addDaySection: (tripId: string, name?: string) => void;
   updateDaySection: (tripId: string, dayId: string, name: string) => void;
   removeDaySection: (tripId: string, dayId: string) => void;
+  cloneTrip: (tripId: string) => string | null;
+  createItinerary: (
+    tripId: string,
+    itinerary: Array<{ dayName: string; places: Array<Omit<PlaceItem, 'id'>> }>
+  ) => void;
 }
 
 function getEmptyTrip(): Trip {
@@ -59,6 +66,25 @@ function getEmptyTrip(): Trip {
     todo: [],
     days: [],
     recommendedPlaces: [],
+  };
+}
+
+function deepCloneTrip(trip: Trip): Trip {
+  const cloneItem = (item: PlaceItem): PlaceItem => ({
+    ...item,
+    id: generateId(),
+  });
+  return {
+    id: generateId(),
+    name: `Copy of ${trip.name}`,
+    wishlist: trip.wishlist.map(cloneItem),
+    todo: trip.todo.map(cloneItem),
+    recommendedPlaces: trip.recommendedPlaces.map(cloneItem),
+    days: trip.days.map((day) => ({
+      id: generateId(),
+      name: day.name,
+      items: day.items.map(cloneItem),
+    })),
   };
 }
 
@@ -84,8 +110,19 @@ function findItemInTrip(
 
 export const useTripStore = create<TripStore>((set) => ({
   trips: [],
+  selectedTripId: null,
 
-  setTrips: (trips) => set({ trips }),
+  setTrips: (trips) =>
+    set((state) => {
+      const firstId = trips[0]?.id ?? null;
+      const validSelected =
+        state.selectedTripId && trips.some((t) => t.id === state.selectedTripId)
+          ? state.selectedTripId
+          : firstId;
+      return { trips, selectedTripId: validSelected };
+    }),
+
+  setSelectedTripId: (id) => set({ selectedTripId: id }),
 
   addTrip: () =>
     set((state) => ({
@@ -347,4 +384,32 @@ export const useTripStore = create<TripStore>((set) => ({
         t.id === tripId ? { ...t, days: t.days.filter((d) => d.id !== dayId) } : t
       ),
     })),
+
+  cloneTrip: (tripId) => {
+    let newTripId: string | null = null;
+    set((state) => {
+      const trip = state.trips.find((t) => t.id === tripId);
+      if (!trip) return state;
+      const cloned = deepCloneTrip(trip);
+      newTripId = cloned.id;
+      return { trips: [...state.trips, cloned] };
+    });
+    return newTripId;
+  },
+
+  createItinerary: (tripId, itinerary) =>
+    set((state) => {
+      const trip = state.trips.find((t) => t.id === tripId);
+      if (!trip) return state;
+      const newDays: DaySection[] = itinerary.map((day) => ({
+        id: generateId(),
+        name: day.dayName,
+        items: day.places.map((p) => ({ ...p, id: generateId() })),
+      }));
+      return {
+        trips: state.trips.map((t) =>
+          t.id === tripId ? { ...t, days: [...t.days, ...newDays] } : t
+        ),
+      };
+    }),
 }));
