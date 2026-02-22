@@ -4,16 +4,19 @@ A web-based trip planner with multiple trips, draggable cards, Google Maps/Place
 
 ## Features
 
-- **Multiple trips** – Plan several trips at once in separate sections
-- **Sections** – Wishlist, To Do, Day planning, Recommended Places
-- **Google Places** – Search and add places with autocomplete; pins appear on map for To Do items
-- **Drag and drop** – Move cards between any sections
-- **Recommended for** – Optional field on Recommended Places (e.g., "Best sunset views")
-- **Day sections** – Add, rename, and remove day sections (Day 1, Beach Day, etc.)
-- **AI Trip Assistant** – Chatbot for place suggestions and info (Groq or Gemini)
+- **Multiple trips** – Plan several trips at once; add, delete, or clone trips
+- **Planning flow** – Suggested for Me → Want to Visit → Confirmed → Day Plan
+- **Sections** – Suggested for Me (places others recommended), Want to Visit (wishlist), Confirmed (final plan), Day sections with instructions per place
+- **Google Places** – Search and add places with autocomplete; numbered pins on map for all sections
+- **Drag and drop** – Move cards between sections with visual feedback; reorder within sections
+- **Recommended for** – Optional field on places (e.g., "Best sunset views")
+- **Day sections** – Add, rename, and remove day sections (Day 1, Beach Day, etc.); each place has an instructions field
+- **AI Trip Assistant** – Chatbot for place info, suggestions, and itinerary creation (Groq or Gemini)
+- **Itinerary creation** – Ask the chatbot to create an itinerary from your places; it prompts for entry/exit points and timing, then adds places to day sections (without removing them from source sections)
 - **PDF export** – Download trip plans as PDF
 - **Cloud sync** – Firebase Firestore for persistence and cross-device sync
 - **Save button** – Click "Save" to persist your trips to the database (manual save)
+- **Responsive** – Works on desktop and mobile browsers (including iOS Safari)
 
 ## Setup
 
@@ -41,7 +44,7 @@ cp .env.example .env
 **Chatbot** (required for AI assistant – use at least one):
 
 - **Groq** (free): Get a key at [console.groq.com](https://console.groq.com) → add `GROQ_API_KEY`
-- **Gemini**: Get a key at [Google AI Studio](https://aistudio.google.com/app/apikey) → add `GEMINI_API_KEY`
+- **Gemini**: Get a key at [Google AI Studio](https://aistudio.google.com/app/apikey) → add `GEMINI_API_KEY` (optional: `GEMINI_MODEL=gemini-2.5-flash`)
 - If both are set, Groq is used by default. Set `AI_PROVIDER=gemini` to prefer Gemini.
 
 **Firebase** (required for auth and sync):
@@ -79,7 +82,7 @@ npm run dev
 This starts both the Vite frontend and the chat API server. Open [http://localhost:5173](http://localhost:5173).
 
 - **Frontend**: http://localhost:5173
-- **API health check**: http://localhost:5173/health or http://localhost:5173/api/chat
+- **API health check**: http://localhost:5173/health or http://localhost:5173/api/health
 
 **Scripts:**
 
@@ -107,4 +110,5 @@ For deployment (e.g. Vercel), the `api/` folder is used as serverless functions.
 - @dnd-kit (drag and drop)
 - Google Maps JavaScript API
 - Groq / Gemini (AI chatbot)
+- react-markdown + remark-gfm (chatbot formatting)
 - jsPDF (PDF export)

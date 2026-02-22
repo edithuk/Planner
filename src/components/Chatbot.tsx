@@ -1,8 +1,55 @@
 import { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { useTripStore } from '../store/tripStore';
+import type { Trip } from '../types';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
+function serializeTripForApi(trip: Trip) {
+  return {
+    name: trip.name,
+    wishlist: trip.wishlist.map((p) => ({
+      name: p.name,
+      placeId: p.placeId,
+      lat: p.lat,
+      lng: p.lng,
+      recommendedFor: p.recommendedFor,
+      instructions: p.instructions,
+    })),
+    todo: trip.todo.map((p) => ({
+      name: p.name,
+      placeId: p.placeId,
+      lat: p.lat,
+      lng: p.lng,
+      recommendedFor: p.recommendedFor,
+      instructions: p.instructions,
+    })),
+    recommendedPlaces: trip.recommendedPlaces.map((p) => ({
+      name: p.name,
+      placeId: p.placeId,
+      lat: p.lat,
+      lng: p.lng,
+      recommendedFor: p.recommendedFor,
+      instructions: p.instructions,
+    })),
+    days: trip.days.map((d) => ({
+      name: d.name,
+      items: d.items.map((p) => ({
+        name: p.name,
+        placeId: p.placeId,
+        lat: p.lat,
+        lng: p.lng,
+        recommendedFor: p.recommendedFor,
+        instructions: p.instructions,
+      })),
+    })),
+  };
+}
+
 export function Chatbot() {
+  const { trips, selectedTripId, createItinerary } = useTripStore();
+  const selectedTrip = trips.find((t) => t.id === selectedTripId);
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -35,6 +82,7 @@ export function Chatbot() {
     setError(null);
 
     try {
+      const tripData = selectedTrip ? serializeTripForApi(selectedTrip) : undefined;
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -44,6 +92,7 @@ export function Chatbot() {
             role: m.role,
             content: m.content,
           })),
+          tripData,
         }),
       });
 
@@ -53,10 +102,12 @@ export function Chatbot() {
         throw new Error(data.error ?? `Request failed: ${res.status}`);
       }
 
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: data.text ?? data.response ?? 'No response received.' },
-      ]);
+      const assistantText = data.text ?? data.response ?? 'No response received.';
+      setMessages((prev) => [...prev, { role: 'assistant', content: assistantText }]);
+
+      if (data.itinerary && Array.isArray(data.itinerary) && selectedTripId) {
+        createItinerary(selectedTripId, data.itinerary);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to get response';
       setError(msg);
@@ -111,7 +162,7 @@ export function Chatbot() {
           <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
             {messages.length === 0 && (
               <p className="text-sm text-zinc-500">
-                Ask about places (e.g. &quot;How is Baga Beach?&quot;) or request suggestions (e.g. &quot;Suggest restaurants in Goa&quot;).
+                Ask about places, get suggestions, or say &quot;Create an itinerary from my wishlist&quot; to plan your trip.
               </p>
             )}
             {messages.map((m, i) => (
@@ -126,7 +177,13 @@ export function Chatbot() {
                       : 'bg-zinc-800 text-zinc-200 border border-zinc-700'
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{m.content}</p>
+                  {m.role === 'user' ? (
+                    <p className="whitespace-pre-wrap">{m.content}</p>
+                  ) : (
+                    <div className="prose prose-invert prose-sm max-w-none [&_a]:text-blue-400 [&_a]:underline [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -154,7 +211,7 @@ export function Chatbot() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask about places or get suggestions..."
+                placeholder="Ask about places, get suggestions, or create itinerary..."
                 rows={1}
                 disabled={loading}
                 className="flex-1 min-h-[40px] max-h-24 py-2 px-3 rounded-lg bg-zinc-800 border border-zinc-600
