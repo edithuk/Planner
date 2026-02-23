@@ -139,19 +139,22 @@ function tryParseItineraryJson(jsonStr: string): ItineraryDay[] | null {
       days = parsed.itinerary ?? parsed.days ?? parsed.dayPlan;
     }
     if (!Array.isArray(days) || days.length === 0) return null;
-    return days.map((day) => {
+    const result: ItineraryDay[] = [];
+    for (const day of days) {
       const dayName = String(day.dayName ?? day.day ?? day.title ?? 'Day');
       const placeList = day.places ?? day.items ?? [];
-      const places = placeList.map((p: Record<string, unknown>) => ({
-        name: String(p.name ?? p.place ?? p.title ?? ''),
-        placeId: typeof p.placeId === 'string' ? p.placeId : undefined,
-        lat: typeof p.lat === 'number' ? p.lat : undefined,
-        lng: typeof p.lng === 'number' ? p.lng : undefined,
-        instructions: typeof p.instructions === 'string' ? p.instructions : undefined,
-      })).filter((p) => p.name);
-      if (places.length === 0) return null;
-      return { dayName, places };
-    }).filter((d): d is ItineraryDay => d !== null);
+      const places = placeList
+        .map((p: Record<string, unknown>) => ({
+          name: String(p.name ?? p.place ?? p.title ?? ''),
+          placeId: typeof p.placeId === 'string' ? p.placeId : undefined,
+          lat: typeof p.lat === 'number' ? p.lat : undefined,
+          lng: typeof p.lng === 'number' ? p.lng : undefined,
+          instructions: typeof p.instructions === 'string' ? p.instructions : undefined,
+        }))
+        .filter((p) => p.name);
+      if (places.length > 0) result.push({ dayName, places });
+    }
+    return result.length > 0 ? result : null;
   } catch {
     return null;
   }
