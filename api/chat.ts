@@ -31,16 +31,16 @@ If you don't have data, you can use general knowledge but say so. Keep responses
   if (tripContext) {
     prompt += `
 
-ITINERARY CREATION:
-The user can ask you to create an itinerary from places in their wishlist, todo, recommended places, or all sections.
-Before creating an itinerary, you MUST collect: (1) Entry point - where they start/arrive, (2) Exit point - where they leave from, (3) Timing - dates, start time, duration. If any are missing, ask for them and do NOT return an itinerary yet.
-Once all three are provided (in current message or conversation history), create the itinerary. Use entry/exit for route order (start near entry, end near exit) and timing for day distribution.
-Places are COPIED to days only - never remove or move from source sections. Unused places stay where they are.
-When returning an itinerary, include a JSON block in this exact format (use the place data from tripData - match names and include placeId, lat, lng, instructions when available):
+ITINERARY CREATION - CRITICAL RULES:
+1. BEFORE creating any itinerary, you MUST ask the user for: (a) Entry point - where they arrive/start, (b) Exit point - where they leave from, (c) Timing - dates, start time, how many hours per day. If ANY of these are missing from the conversation, respond ONLY with a friendly question asking for them. Do NOT output any JSON or itinerary until they provide all three.
+2. Once the user has given entry, exit, and timing in this or a previous message, you may create the itinerary.
+3. Use tripData places when available; otherwise suggest popular places for the destination.
+4. Places are COPIED to days only - never remove from source sections.
+5. OUTPUT FORMAT: Write a short friendly message for the user (e.g. "I've created your 4-day Goa itinerary and added it to your Day Plan!"). Then add a JSON code block that the app will parse to populate days (the app strips this from what the user sees):
 \`\`\`json
 {"itinerary": [{"dayName": "Day 1 - Theme", "places": [{"name": "...", "placeId": "...", "lat": 0, "lng": 0, "instructions": "..."}]}]}
 \`\`\`
-`;
+The app will parse this block and populate the day sections. The user will never see it - they only see your friendly message above.`;
   }
   return prompt;
 }
@@ -125,13 +125,19 @@ async function getPlaceDetails(placeId: string): Promise<Record<string, unknown>
   return null;
 }
 
-function parseItineraryFromResponse(text: string): Array<{ dayName: string; places: Array<{ name: string; placeId?: string; lat?: number; lng?: number; instructions?: string }> }> | null {
-  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (!jsonMatch) return null;
+type ItineraryDay = { dayName: string; places: Array<{ name: string; placeId?: string; lat?: number; lng?: number; instructions?: string }> };
+
+function tryParseItineraryJson(jsonStr: string): ItineraryDay[] | null {
   try {
-    const parsed = JSON.parse(jsonMatch[1].trim()) as { itinerary?: Array<{ dayName: string; places: Array<Record<string, unknown>> }> };
-    if (!Array.isArray(parsed?.itinerary)) return null;
-    return parsed.itinerary.map((day) => ({
+    const parsed = JSON.parse(jsonStr);
+    let days: Array<{ dayName: string; places: Array<Record<string, unknown>> }> | undefined;
+    if (Array.isArray(parsed)) {
+      days = parsed;
+    } else if (parsed && typeof parsed === 'object') {
+      days = parsed.itinerary ?? parsed.days;
+    }
+    if (!Array.isArray(days) || days.length === 0) return null;
+    return days.map((day) => ({
       dayName: String(day.dayName ?? 'Day'),
       places: (day.places ?? []).map((p) => ({
         name: String(p.name ?? ''),
@@ -144,6 +150,20 @@ function parseItineraryFromResponse(text: string): Array<{ dayName: string; plac
   } catch {
     return null;
   }
+}
+
+function parseItineraryFromResponse(text: string): { itinerary: ItineraryDay[]; displayText: string } | null {
+  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const jsonBlock = jsonMatch?.[0] ?? '';
+  const jsonContent = jsonMatch?.[1]?.trim() ?? '';
+  const displayText = jsonBlock ? text.replace(jsonBlock, '').replace(/\n{3,}/g, '\n\n').trim() : text;
+
+  const itinerary = jsonContent ? tryParseItineraryJson(jsonContent) : null;
+  if (!itinerary) return null;
+  return {
+    itinerary,
+    displayText: displayText || "I've added your itinerary to the Day Plan sections.",
+  };
 }
 
 async function textSearchPlaces(query: string): Promise<unknown[] | null> {
@@ -206,6 +226,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         text: 'Please select a trip first, then I can create an itinerary from the places you\'ve added.',
       });
     }
+    const history = Array.isArray(body?.conversationHistory) ? body.conversationHistory : [];
+    const allUserMessages = [...history.filter((m) => m.role === 'user').map((m) => m.content), message];
+    const combined = allUserMessages.join(' ');
+    const hasEntryPoint = /\b(entry|arrive|start|land|reach|from)\b/i.test(combined);
+    const hasExitPoint = /\b(exit|leave|depart|to)\b/i.test(combined);
+    const hasTiming = /\b(time|date|day|hour|morning|evening|am|pm|9am|10am)\b/i.test(combined);
+    const hasEntryExitTiming = hasEntryPoint && hasExitPoint && hasTiming;
+    const itineraryPrePrompt =
+      isItineraryRequest && tripData && !hasEntryExitTiming
+        ? `[IMPORTANT: The user wants an itinerary but has NOT yet provided: (1) Entry point - where they arrive/start, (2) Exit point - where they leave from, (3) Timing - dates, start time. You MUST ask for these before creating. Do NOT output any JSON or itinerary. Just ask a friendly question.]\n\n`
+        : '';
     const tripContext = tripData
       ? `\n\n[Current trip "${tripData.name}" - places the user has added]:\n${JSON.stringify(tripData, null, 2)}\n\nUse this data when creating itineraries. Match place names exactly and include placeId, lat, lng, instructions when available.`
       : '';
@@ -250,16 +281,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    const history = Array.isArray(body?.conversationHistory) ? body.conversationHistory : [];
     const systemPrompt = buildSystemPrompt(tripContext);
-    const fullUserMessage = `${message}${placeContext}${tripContext}`;
+    const fullUserMessage = `${itineraryPrePrompt}${message}${placeContext}${tripContext}`;
     const text =
       provider === 'groq'
         ? await generateWithGroq(fullUserMessage, '', history, systemPrompt)
         : await generateWithGemini(fullUserMessage, '', history, systemPrompt);
 
-    const itinerary = parseItineraryFromResponse(text);
-    return res.status(200).json(itinerary ? { text, itinerary } : { text });
+    const parsed = parseItineraryFromResponse(text);
+    const responseText = parsed ? parsed.displayText : text;
+    const itinerary = parsed?.itinerary ?? null;
+    return res.status(200).json(itinerary ? { text: responseText, itinerary } : { text: responseText });
   } catch (err) {
     console.error('Chat API error:', err);
     const msg = err instanceof Error ? err.message : 'Unknown error';
