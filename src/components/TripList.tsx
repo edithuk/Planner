@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { saveTripsToFirestore } from '../lib/firestore';
@@ -32,16 +32,19 @@ function getAllMapItems(trip: Trip | undefined): MapItemWithSection[] {
 }
 
 export function TripList() {
-  const { trips, addTrip, deleteTrip } = useTripStore();
-  const [selectedTripId, setSelectedTripId] = useState<string | null>(
-    trips[0]?.id ?? null
-  );
+  const { trips, addTrip, deleteTrip, cloneTrip, selectedTripId, setSelectedTripId } = useTripStore();
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<MobileView>('planner');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) ?? trips[0];
+
+  useEffect(() => {
+    if (trips.length > 0 && (!selectedTripId || !trips.some((t) => t.id === selectedTripId))) {
+      setSelectedTripId(trips[0].id);
+    }
+  }, [trips, selectedTripId, setSelectedTripId]);
 
   const handleAddTrip = () => {
     addTrip();
@@ -56,6 +59,15 @@ export function TripList() {
     if (selectedTripId === tripId) {
       const remaining = trips.filter((t) => t.id !== tripId);
       setSelectedTripId(remaining[0]?.id ?? null);
+    }
+  };
+
+  const handleCloneTrip = (e: React.MouseEvent, tripId: string) => {
+    e.stopPropagation();
+    const newTripId = cloneTrip(tripId);
+    if (newTripId) {
+      setSelectedTripId(newTripId);
+      setSidebarOpen(false);
     }
   };
 
@@ -190,6 +202,16 @@ export function TripList() {
                   }`}
                 >
                   <span className="flex-1 min-w-0 truncate">{trip.name}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => handleCloneTrip(e, trip.id)}
+                    className="shrink-0 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center rounded text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10 transition touch-manipulation"
+                    aria-label={`Clone ${trip.name}`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </button>
                   <button
                     type="button"
                     onClick={(e) => handleDeleteTrip(e, trip.id)}

@@ -10,16 +10,49 @@ interface VercelResponse {
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.VITE_GOOGLE_MAPS_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+type AIProvider = 'groq' | 'gemini';
+
+function getAIProvider(): AIProvider | null {
+  const configured = process.env.AI_PROVIDER?.toLowerCase();
+  if (configured === 'groq' && GROQ_API_KEY) return 'groq';
+  if (configured === 'gemini' && GEMINI_API_KEY) return 'gemini';
+  if (GROQ_API_KEY) return 'groq';
+  if (GEMINI_API_KEY) return 'gemini';
+  return null;
+}
+
+function buildSystemPrompt(tripContext: string): string {
+  let prompt = `You are a helpful trip planning assistant. You help users learn about places and get suggestions for their trips.
+Answer concisely and helpfully. When you have place data from the API, use it to give accurate, specific answers.
+If you don't have data, you can use general knowledge but say so. Keep responses under 300 words unless the user asks for more.`;
+
+  if (tripContext) {
+    prompt += `
+
+ITINERARY CREATION - CRITICAL RULES:
+1. BEFORE creating any itinerary, you MUST ask the user for: (a) Entry point - where they arrive/start, (b) Exit point - where they leave from, (c) Timing - dates, start time, how many hours per day. If ANY of these are missing from the conversation, respond ONLY with a friendly question asking for them. Do NOT output any JSON or itinerary until they provide all three.
+2. Once the user has given entry, exit, and timing in this or a previous message, you may create the itinerary.
+3. Use tripData places when available; otherwise suggest popular places for the destination.
+4. Places are COPIED to days only - never remove from source sections.
+5. OUTPUT FORMAT (when you create an itinerary): You MUST include a JSON code block so the app can add days. Format:
+- First line: a short friendly message (e.g. "I've created your 4-day Goa itinerary and added it to your Day Plan!")
+- Then a newline and this exact block (replace with real data):
+\`\`\`json
+{"itinerary": [{"dayName": "Day 1 - Beach Day", "places": [{"name": "Baga Beach", "placeId": "", "lat": 15.5, "lng": 73.7, "instructions": ""}]}, {"dayName": "Day 2 - ...", "places": [...]}]}
+\`\`\`
+CRITICAL: Every place MUST have at least "name". Include lat/lng when known. The app parses this block to populate Day Plan sections - without it, nothing will be added.`;
+  }
+  return prompt;
+}
 
 async function generateWithGroq(
   message: string,
   placeContext: string,
-  history: Array<{ role: string; content: string }>
+  history: Array<{ role: string; content: string }>,
+  systemPrompt: string
 ): Promise<string> {
-  const systemPrompt = `You are a helpful trip planning assistant. You help users learn about places and get suggestions for their trips.
-Answer concisely and helpfully. When you have place data from the API, use it to give accurate, specific answers.
-If you don't have data, you can use general knowledge but say so. Keep responses under 300 words unless the user asks for more.`;
-
   const messages: Array<{ role: string; content: string }> = [
     { role: 'system', content: systemPrompt },
     ...history.slice(-10).map((h) => ({ role: h.role as 'user' | 'assistant', content: h.content })),
@@ -36,7 +69,7 @@ If you don't have data, you can use general knowledge but say so. Keep responses
       model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
       messages,
       temperature: 0.7,
-      max_tokens: 1024,
+      max_tokens: 2048,
     }),
   });
 
@@ -49,6 +82,28 @@ If you don't have data, you can use general knowledge but say so. Keep responses
   const text = data.choices?.[0]?.message?.content?.trim();
   if (!text) throw new Error('No response from Groq');
   return text;
+}
+
+async function generateWithGemini(
+  message: string,
+  placeContext: string,
+  history: Array<{ role: string; content: string }>,
+  systemPrompt: string
+): Promise<string> {
+  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  const genAI = new GoogleGenerativeAI(GEMINI_API_KEY!);
+  const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const model = genAI.getGenerativeModel({ model: modelName });
+
+  const chat = model.startChat({
+    history: history.slice(-10).map((h) => ({
+      role: h.role === 'user' ? 'user' : 'model',
+      parts: [{ text: h.content }],
+    })),
+  });
+
+  const result = await chat.sendMessage(`${message}${placeContext}`);
+  return result.response.text();
 }
 
 async function findPlaceId(query: string): Promise<string | null> {
@@ -72,6 +127,124 @@ async function getPlaceDetails(placeId: string): Promise<Record<string, unknown>
   return null;
 }
 
+type ItineraryDay = { dayName: string; places: Array<{ name: string; placeId?: string; lat?: number; lng?: number; instructions?: string }> };
+
+function tryParseItineraryJson(jsonStr: string): ItineraryDay[] | null {
+  try {
+    const parsed = JSON.parse(jsonStr);
+    let days: Array<{ dayName?: string; day?: string; title?: string; places?: Array<Record<string, unknown>>; items?: Array<Record<string, unknown>> }> | undefined;
+    if (Array.isArray(parsed)) {
+      days = parsed;
+    } else if (parsed && typeof parsed === 'object') {
+      days = parsed.itinerary ?? parsed.days ?? parsed.dayPlan;
+    }
+    if (!Array.isArray(days) || days.length === 0) return null;
+    const result: ItineraryDay[] = [];
+    for (const day of days) {
+      const dayName = String(day.dayName ?? day.day ?? day.title ?? 'Day');
+      const placeList = day.places ?? day.items ?? [];
+      const places = placeList
+        .map((p: Record<string, unknown>) => ({
+          name: String(p.name ?? p.place ?? p.title ?? ''),
+          placeId: typeof p.placeId === 'string' ? p.placeId : undefined,
+          lat: typeof p.lat === 'number' ? p.lat : undefined,
+          lng: typeof p.lng === 'number' ? p.lng : undefined,
+          instructions: typeof p.instructions === 'string' ? p.instructions : undefined,
+        }))
+        .filter((p) => p.name);
+      if (places.length > 0) result.push({ dayName, places });
+    }
+    return result.length > 0 ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseItineraryFromResponse(text: string): { itinerary: ItineraryDay[]; displayText: string } | null {
+  const defaultDisplay = "I've added your itinerary to the Day Plan sections.";
+
+  // 1. Try markdown code blocks (all of them - AI might use first or last)
+  const codeBlocks = text.matchAll(/```(?:json)?\s*([\s\S]*?)```/g);
+  for (const match of codeBlocks) {
+    const jsonContent = match[1]?.trim();
+    if (jsonContent) {
+      const itinerary = tryParseItineraryJson(jsonContent);
+      if (itinerary && itinerary.length > 0) {
+        const jsonBlock = match[0];
+        const displayText = text.replace(jsonBlock, '').replace(/\n{3,}/g, '\n\n').trim() || defaultDisplay;
+        return { itinerary, displayText };
+      }
+    }
+  }
+
+  // 1b. Code block without proper closing - try from ```json to next ``` or end
+  const jsonBlockStart = text.search(/```(?:json)?\s*\n?/);
+  if (jsonBlockStart >= 0) {
+    const prefix = text.slice(jsonBlockStart).match(/^```(?:json)?\s*\n?/)?.[0] ?? '';
+    const afterPrefix = text.slice(jsonBlockStart + prefix.length);
+    const untilNextBlock = afterPrefix.split(/\n?```/)[0].trim();
+    if (untilNextBlock.length > 20) {
+      const itinerary = tryParseItineraryJson(untilNextBlock);
+      if (itinerary && itinerary.length > 0) {
+        const blockEnd = jsonBlockStart + prefix.length + untilNextBlock.length;
+        const displayText = (text.slice(0, jsonBlockStart) + text.slice(blockEnd)).replace(/\n{3,}/g, '\n\n').trim() || defaultDisplay;
+        return { itinerary, displayText };
+      }
+    }
+  }
+
+  // 2. Try to find JSON by scanning for common start patterns
+  const jsonStarts = [
+    text.indexOf('{"itinerary":'),
+    text.indexOf('{"days":'),
+    text.indexOf('[{"dayName":'),
+    text.indexOf('[{"day":'),
+    text.indexOf('"itinerary":'),
+  ].filter((i) => i >= 0);
+  for (const start of jsonStarts) {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let end = -1;
+    const charAtStart = text[start];
+    const isArray = charAtStart === '[';
+    const open = isArray ? '[' : '{';
+    const close = isArray ? ']' : '}';
+    const from = isArray ? start : (charAtStart === '{' ? start : text.lastIndexOf('{', start));
+    for (let i = from; i < text.length; i++) {
+      const c = text[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (c === '\\' && inString) {
+        escape = true;
+        continue;
+      }
+      if (!inString) {
+        if (c === open) depth++;
+        else if (c === close) {
+          depth--;
+          if (depth === 0) {
+            end = i + 1;
+            break;
+          }
+        } else if (c === '"') inString = true;
+      } else if (c === '"') inString = false;
+    }
+    if (end > from) {
+      const candidate = text.slice(from, end);
+      const itinerary = tryParseItineraryJson(candidate);
+      if (itinerary && itinerary.length > 0) {
+        const displayText = (text.slice(0, from) + text.slice(end)).replace(/\n{3,}/g, '\n\n').trim() || defaultDisplay;
+        return { itinerary, displayText };
+      }
+    }
+  }
+
+  return null;
+}
+
 async function textSearchPlaces(query: string): Promise<unknown[] | null> {
   if (!GOOGLE_PLACES_API_KEY) return null;
   const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${GOOGLE_PLACES_API_KEY}`;
@@ -84,12 +257,14 @@ async function textSearchPlaces(query: string): Promise<unknown[] | null> {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') {
+    const provider = getAIProvider();
     return res.status(200).json({
       status: 'ok',
-      provider: 'groq',
+      provider: provider || 'none',
       message: 'Chat API is running. Use POST to send messages.',
-      configured: !!GROQ_API_KEY,
-      hint: !GROQ_API_KEY ? 'Add GROQ_API_KEY to .env (get free key at console.groq.com)' : undefined,
+      configured: !!provider,
+      providers: { groq: !!GROQ_API_KEY, gemini: !!GEMINI_API_KEY },
+      hint: !provider ? 'Add GROQ_API_KEY or GEMINI_API_KEY to .env' : undefined,
     });
   }
   if (req.method !== 'POST') {
@@ -97,20 +272,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  if (!GROQ_API_KEY) {
+  const provider = getAIProvider();
+  if (!provider) {
     return res.status(503).json({
-      error: 'Chat is not configured. Please set GROQ_API_KEY in .env',
-      text: 'Add GROQ_API_KEY to .env (get free key at console.groq.com)',
+      error: 'No AI provider configured. Set GROQ_API_KEY or GEMINI_API_KEY in .env',
+      text: 'Add GROQ_API_KEY (free at console.groq.com) or GEMINI_API_KEY to .env',
     });
   }
 
   try {
-    const body = req.body as { message?: string; conversationHistory?: Array<{ role: string; content: string }> };
+    const body = req.body as {
+      message?: string;
+      conversationHistory?: Array<{ role: string; content: string }>;
+      tripData?: {
+        name?: string;
+        wishlist?: Array<{ name: string; placeId?: string; lat?: number; lng?: number; instructions?: string }>;
+        todo?: Array<{ name: string; placeId?: string; lat?: number; lng?: number; instructions?: string }>;
+        recommendedPlaces?: Array<{ name: string; placeId?: string; lat?: number; lng?: number; instructions?: string }>;
+        days?: Array<{ name: string; items?: Array<{ name: string; placeId?: string; lat?: number; lng?: number; instructions?: string }> }>;
+      };
+    };
     const message = typeof body?.message === 'string' ? body.message.trim() : '';
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required', text: 'Please enter a message.' });
     }
+
+    const tripData = body?.tripData;
+    const isItineraryRequest = /\b(create|make|plan|build)\s+(an?\s+)?itinerary\b/i.test(message);
+    if (isItineraryRequest && !tripData) {
+      return res.status(200).json({
+        text: 'Please select a trip first, then I can create an itinerary from the places you\'ve added.',
+      });
+    }
+    const history = Array.isArray(body?.conversationHistory) ? body.conversationHistory : [];
+    const allUserMessages = [...history.filter((m) => m.role === 'user').map((m) => m.content), message];
+    const combined = allUserMessages.join(' ');
+    const hasEntryPoint = /\b(entry|arrive|start|land|reach|from)\b/i.test(combined);
+    const hasExitPoint = /\b(exit|leave|depart|to)\b/i.test(combined);
+    const hasTiming = /\b(time|date|day|hour|morning|evening|am|pm|9am|10am)\b/i.test(combined);
+    const hasEntryExitTiming = hasEntryPoint && hasExitPoint && hasTiming;
+    const itineraryPrePrompt =
+      isItineraryRequest && tripData && !hasEntryExitTiming
+        ? `[IMPORTANT: The user wants an itinerary but has NOT yet provided: (1) Entry point - where they arrive/start, (2) Exit point - where they leave from, (3) Timing - dates, start time. You MUST ask for these before creating. Do NOT output any JSON or itinerary. Just ask a friendly question.]\n\n`
+        : '';
+    const tripContext = tripData
+      ? `\n\n[Current trip "${tripData.name}" - places the user has added]:\n${JSON.stringify(tripData, null, 2)}\n\nUse this data when creating itineraries. Match place names exactly and include placeId, lat, lng, instructions when available.`
+      : '';
 
     const lowerMessage = message.toLowerCase();
     const isPlaceDetail =
@@ -152,10 +360,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    const history = Array.isArray(body?.conversationHistory) ? body.conversationHistory : [];
-    const text = await generateWithGroq(message, placeContext, history);
+    const systemPrompt = buildSystemPrompt(tripContext);
+    const fullUserMessage = `${itineraryPrePrompt}${message}${placeContext}${tripContext}`;
+    const text =
+      provider === 'groq'
+        ? await generateWithGroq(fullUserMessage, '', history, systemPrompt)
+        : await generateWithGemini(fullUserMessage, '', history, systemPrompt);
 
-    return res.status(200).json({ text });
+    const parsed = parseItineraryFromResponse(text);
+    const responseText = parsed ? parsed.displayText : text;
+    const itinerary = parsed?.itinerary ?? null;
+    return res.status(200).json(itinerary ? { text: responseText, itinerary } : { text: responseText });
   } catch (err) {
     console.error('Chat API error:', err);
     const msg = err instanceof Error ? err.message : 'Unknown error';

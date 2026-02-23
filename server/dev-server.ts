@@ -21,12 +21,15 @@ app.use(express.json());
 
 // Health check: GET /health
 app.get('/health', (_req, res) => {
-  const configured = !!process.env.GROQ_API_KEY;
+  const groq = !!process.env.GROQ_API_KEY;
+  const gemini = !!process.env.GEMINI_API_KEY;
+  const configured = groq || gemini;
   res.json({
     status: 'ok',
     message: 'API server is running',
     configured,
-    hint: !configured ? 'Add GROQ_API_KEY to .env (get free key at console.groq.com)' : undefined,
+    providers: { groq, gemini },
+    hint: !configured ? 'Add GROQ_API_KEY or GEMINI_API_KEY to .env' : undefined,
     envLoaded: !!envResult.parsed,
     envFile: envResult.error ? `Not found: ${envResult.error.message}` : 'Loaded from .env',
   });
@@ -34,26 +37,24 @@ app.get('/health', (_req, res) => {
 
 // Health check: GET /api/health
 app.get('/api/health', (_req, res) => {
-  const configured = !!process.env.GROQ_API_KEY;
+  const groq = !!process.env.GROQ_API_KEY;
+  const gemini = !!process.env.GEMINI_API_KEY;
+  const configured = groq || gemini;
   res.json({
     status: 'ok',
     message: 'API server is running',
     configured,
-    hint: !configured ? 'Add GROQ_API_KEY to .env (get free key at console.groq.com)' : undefined,
+    providers: { groq, gemini },
+    hint: !configured ? 'Add GROQ_API_KEY or GEMINI_API_KEY to .env' : undefined,
     envLoaded: !!envResult.parsed,
     envFile: envResult.error ? `Not found: ${envResult.error.message}` : 'Loaded from .env',
   });
 });
 
 // GET /api/chat - status (must match api/chat.ts for consistency)
-app.get('/api/chat', (_req, res) => {
-  const configured = !!process.env.GROQ_API_KEY;
-  res.json({
-    status: 'ok',
-    provider: 'groq',
-    message: 'Chat API is running. Use POST to send messages.',
-    configured,
-  });
+app.get('/api/chat', async (_req, res) => {
+  const { default: handler } = await import('../api/chat');
+  await handler({ method: 'GET' }, res);
 });
 
 // POST /api/chat - import handler after env is loaded
@@ -69,11 +70,13 @@ app.post('/api/chat', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  const configured = !!process.env.GROQ_API_KEY;
+  const groq = !!process.env.GROQ_API_KEY;
+  const gemini = !!process.env.GEMINI_API_KEY;
+  const configured = groq || gemini;
   console.log(`[API] Chat server at http://localhost:${PORT}`);
   console.log(`[API] Health: http://localhost:${PORT}/health`);
-  console.log(`[API] Groq: ${configured ? 'configured' : 'NOT SET - add GROQ_API_KEY to .env'}`);
+  console.log(`[API] Groq: ${groq ? 'configured' : 'NOT SET'} | Gemini: ${gemini ? 'configured' : 'NOT SET'}`);
   if (!configured) {
-    console.warn('[API] Get free key at https://console.groq.com');
+    console.warn('[API] Add GROQ_API_KEY (free) or GEMINI_API_KEY to .env');
   }
 });
