@@ -36,11 +36,13 @@ ITINERARY CREATION - CRITICAL RULES:
 2. Once the user has given entry, exit, and timing in this or a previous message, you may create the itinerary.
 3. Use tripData places when available; otherwise suggest popular places for the destination.
 4. Places are COPIED to days only - never remove from source sections.
-5. OUTPUT FORMAT: Write a short friendly message for the user (e.g. "I've created your 4-day Goa itinerary and added it to your Day Plan!"). Then add a JSON code block that the app will parse to populate days (the app strips this from what the user sees):
+5. OUTPUT FORMAT (when you create an itinerary): You MUST include a JSON code block so the app can add days. Format:
+- First line: a short friendly message (e.g. "I've created your 4-day Goa itinerary and added it to your Day Plan!")
+- Then a newline and this exact block (replace with real data):
 \`\`\`json
-{"itinerary": [{"dayName": "Day 1 - Theme", "places": [{"name": "...", "placeId": "...", "lat": 0, "lng": 0, "instructions": "..."}]}]}
+{"itinerary": [{"dayName": "Day 1 - Beach Day", "places": [{"name": "Baga Beach", "placeId": "", "lat": 15.5, "lng": 73.7, "instructions": ""}]}, {"dayName": "Day 2 - ...", "places": [...]}]}
 \`\`\`
-The app will parse this block and populate the day sections. The user will never see it - they only see your friendly message above.`;
+CRITICAL: Every place MUST have at least "name". Include lat/lng when known. The app parses this block to populate Day Plan sections - without it, nothing will be added.`;
   }
   return prompt;
 }
@@ -130,40 +132,114 @@ type ItineraryDay = { dayName: string; places: Array<{ name: string; placeId?: s
 function tryParseItineraryJson(jsonStr: string): ItineraryDay[] | null {
   try {
     const parsed = JSON.parse(jsonStr);
-    let days: Array<{ dayName: string; places: Array<Record<string, unknown>> }> | undefined;
+    let days: Array<{ dayName?: string; day?: string; title?: string; places?: Array<Record<string, unknown>>; items?: Array<Record<string, unknown>> }> | undefined;
     if (Array.isArray(parsed)) {
       days = parsed;
     } else if (parsed && typeof parsed === 'object') {
-      days = parsed.itinerary ?? parsed.days;
+      days = parsed.itinerary ?? parsed.days ?? parsed.dayPlan;
     }
     if (!Array.isArray(days) || days.length === 0) return null;
-    return days.map((day) => ({
-      dayName: String(day.dayName ?? 'Day'),
-      places: (day.places ?? []).map((p) => ({
-        name: String(p.name ?? ''),
+    return days.map((day) => {
+      const dayName = String(day.dayName ?? day.day ?? day.title ?? 'Day');
+      const placeList = day.places ?? day.items ?? [];
+      const places = placeList.map((p: Record<string, unknown>) => ({
+        name: String(p.name ?? p.place ?? p.title ?? ''),
         placeId: typeof p.placeId === 'string' ? p.placeId : undefined,
         lat: typeof p.lat === 'number' ? p.lat : undefined,
         lng: typeof p.lng === 'number' ? p.lng : undefined,
         instructions: typeof p.instructions === 'string' ? p.instructions : undefined,
-      })),
-    }));
+      })).filter((p) => p.name);
+      if (places.length === 0) return null;
+      return { dayName, places };
+    }).filter((d): d is ItineraryDay => d !== null);
   } catch {
     return null;
   }
 }
 
 function parseItineraryFromResponse(text: string): { itinerary: ItineraryDay[]; displayText: string } | null {
-  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const jsonBlock = jsonMatch?.[0] ?? '';
-  const jsonContent = jsonMatch?.[1]?.trim() ?? '';
-  const displayText = jsonBlock ? text.replace(jsonBlock, '').replace(/\n{3,}/g, '\n\n').trim() : text;
+  const defaultDisplay = "I've added your itinerary to the Day Plan sections.";
 
-  const itinerary = jsonContent ? tryParseItineraryJson(jsonContent) : null;
-  if (!itinerary) return null;
-  return {
-    itinerary,
-    displayText: displayText || "I've added your itinerary to the Day Plan sections.",
-  };
+  // 1. Try markdown code blocks (all of them - AI might use first or last)
+  const codeBlocks = text.matchAll(/```(?:json)?\s*([\s\S]*?)```/g);
+  for (const match of codeBlocks) {
+    const jsonContent = match[1]?.trim();
+    if (jsonContent) {
+      const itinerary = tryParseItineraryJson(jsonContent);
+      if (itinerary && itinerary.length > 0) {
+        const jsonBlock = match[0];
+        const displayText = text.replace(jsonBlock, '').replace(/\n{3,}/g, '\n\n').trim() || defaultDisplay;
+        return { itinerary, displayText };
+      }
+    }
+  }
+
+  // 1b. Code block without proper closing - try from ```json to next ``` or end
+  const jsonBlockStart = text.search(/```(?:json)?\s*\n?/);
+  if (jsonBlockStart >= 0) {
+    const prefix = text.slice(jsonBlockStart).match(/^```(?:json)?\s*\n?/)?.[0] ?? '';
+    const afterPrefix = text.slice(jsonBlockStart + prefix.length);
+    const untilNextBlock = afterPrefix.split(/\n?```/)[0].trim();
+    if (untilNextBlock.length > 20) {
+      const itinerary = tryParseItineraryJson(untilNextBlock);
+      if (itinerary && itinerary.length > 0) {
+        const blockEnd = jsonBlockStart + prefix.length + untilNextBlock.length;
+        const displayText = (text.slice(0, jsonBlockStart) + text.slice(blockEnd)).replace(/\n{3,}/g, '\n\n').trim() || defaultDisplay;
+        return { itinerary, displayText };
+      }
+    }
+  }
+
+  // 2. Try to find JSON by scanning for common start patterns
+  const jsonStarts = [
+    text.indexOf('{"itinerary":'),
+    text.indexOf('{"days":'),
+    text.indexOf('[{"dayName":'),
+    text.indexOf('[{"day":'),
+    text.indexOf('"itinerary":'),
+  ].filter((i) => i >= 0);
+  for (const start of jsonStarts) {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let end = -1;
+    const charAtStart = text[start];
+    const isArray = charAtStart === '[';
+    const open = isArray ? '[' : '{';
+    const close = isArray ? ']' : '}';
+    const from = isArray ? start : (charAtStart === '{' ? start : text.lastIndexOf('{', start));
+    for (let i = from; i < text.length; i++) {
+      const c = text[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (c === '\\' && inString) {
+        escape = true;
+        continue;
+      }
+      if (!inString) {
+        if (c === open) depth++;
+        else if (c === close) {
+          depth--;
+          if (depth === 0) {
+            end = i + 1;
+            break;
+          }
+        } else if (c === '"') inString = true;
+      } else if (c === '"') inString = false;
+    }
+    if (end > from) {
+      const candidate = text.slice(from, end);
+      const itinerary = tryParseItineraryJson(candidate);
+      if (itinerary && itinerary.length > 0) {
+        const displayText = (text.slice(0, from) + text.slice(end)).replace(/\n{3,}/g, '\n\n').trim() || defaultDisplay;
+        return { itinerary, displayText };
+      }
+    }
+  }
+
+  return null;
 }
 
 async function textSearchPlaces(query: string): Promise<unknown[] | null> {
